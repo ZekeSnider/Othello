@@ -21,3 +21,9 @@ client:
 
 server:
 	GOPATH=$(GOPATH) go build -o bin/server src/command/server/server.go
+
+rclient:
+	./bin/client
+
+rserver:
+	./bin/server

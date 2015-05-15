@@ -8,6 +8,8 @@ import (
     "net"
     "os"
     "log"
+    "strings"
+    "strconv"
 )
 
 type HostGame struct {
@@ -20,21 +22,17 @@ var board BoardLayout = BoardLayout{}
 
 func main() {
 
-	listGames()
+	mainMenu()
 
 
 }
 
 func listGames() {
-
-
 	conn, err := net.Dial("tcp", "localhost:8080")
 
 	checkForError(err)
 
 	defer conn.Close()
-
-	checkForError(err)
 
 	conn.Write([]byte("LISTGAME"))
 
@@ -43,43 +41,165 @@ func listGames() {
 
 	responseString := string(response[:120])
 
-	fmt.Printf("%v", responseString)
+	if strings.HasPrefix(responseString, "GAMELIST") {
+		numElements, err := strconv.Atoi(responseString[9:10])
+		checkForError(err)
 
-	conn.Write([]byte("JOINGAME"))
+		for i := 0; i<numElements; i++ {
+			fmt.Printf("%v. %v %v\n", i+1, responseString[11+i*28:36+i*28], responseString[37+i*28:38+i*28])
+		}
+		
+	}
+	
+
+	conn.Close()
 
 }
 
-func playGame(playerColor byte, serverConnection net.Conn) {
+func getName() string {
+	inputReader := bufio.NewReader(os.Stdin)
+	for true {
+		fmt.Print("\n\nEnter your name: ")
+		text, _ := inputReader.ReadString('\n')
+		text = strings.TrimSpace(text)
+		if len(text) < 25 || len(text) != 0 {
+			name := text
+			return name
+		}
+	}
+	return "bob"
+}
+
+func getGameNumber() int {
+	inputReader := bufio.NewReader(os.Stdin)
+	for true {
+		fmt.Print("\n\nWhat game would you like to join?: ")
+		text, _ := inputReader.ReadString('\n')
+		text = strings.TrimSpace(text)
+		textInt, err := strconv.Atoi(text)
+		checkForError(err)
+		if textInt<=8 && textInt>0 {
+			return textInt
+		}
+	}
+	return 1
+}
+
+func getColor() byte {
+	inputReader := bufio.NewReader(os.Stdin)
+	for true {
+		fmt.Print("\n\nChoose your color (W for white, B for Black): ")
+		text, _ := inputReader.ReadString('\n')
+		text = strings.TrimSpace(text)
+		if text == "W" {
+			playerColor := byte('W')
+			return playerColor
+		} else if text == "B" {
+			playerColor := byte('B')
+			return playerColor
+		}
+	}
+	return byte('B')
+}
+func joinGame(gameNumber int, name string) {
+
+	//check if gamenumber size is greater than 8
+	serverConnection, err := net.Dial("tcp", "localhost:8080")
+
+	checkForError(err)
+
 	defer serverConnection.Close()
+	
+	requestString := fmt.Sprintf("JOINGAME %25v %v", name, gameNumber)
+	fmt.Printf("Game number is.. %v ",requestString)
+
+	serverConnection.Write([]byte(requestString))
+	response := make([]byte, 120)
+
+	fmt.Printf("Joining... \n")
+
+	_, _ = serverConnection.Read(response)
+	responseString := string(response[:120])
+
+	if strings.HasPrefix(responseString, "GAMEJOIN") {
+		playerColor := responseString[9:10]
+		playGame(playerColor, serverConnection)
+	} else {
+		fmt.Printf("ERROR: That game cannot be joined!")
+		os.Exit(0)
+	}
+
+}
+func hostGame(playerColor byte, name string) {
+	serverConnection, err := net.Dial("tcp", "localhost:8080")
+
+	checkForError(err)
+
+	defer serverConnection.Close()
+	
+	requestString := fmt.Sprintf("HOSTGAME %25v %v", name, string(playerColor))
+	fmt.Printf("your color is.. %v", playerColor)
+
+	serverConnection.Write([]byte(requestString))
+	response := make([]byte, 120)
+
+	fmt.Printf("Waiting for pair...\n")
+
+	_, _ = serverConnection.Read(response)
+	responseString := string(response[:120])
+	fmt.Printf("Got a Response!!!! %v", responseString)
+
+	if strings.HasPrefix(responseString, "GAMEPAIR") {
+		playGame(string(playerColor), serverConnection)
+	} else if strings.HasPrefix(responseString, "HOSTFULL") {
+		fmt.Printf("ERROR: No more host slots available!!")
+		os.Exit(0)
+	}
+
+
+}
+
+func playGame(playerColor string, serverConnection net.Conn) {
+	defer serverConnection.Close()
+	startBoard()
 	turnCount := 1
 	endGame := false
-	while endGame != true {
-		if (playerColor == 'B' && turnCount % 2 == 1) || (playerColor == 'W' && turnCount % 2 == 0) {
+	for endGame != true {
+		if (playerColor == "B" && turnCount % 2 == 1) || (playerColor == "W" && turnCount % 2 == 0) {
 			var move string
 			moveOK := false
-			while moveOK != true {
+			for moveOK != true {
 				printBoard()
 				inputReader := bufio.NewReader(os.Stdin)
 				fmt.Print("Enter your move: ")
 				move, _ = inputReader.ReadString('\n')
+				fmt.Printf("move = %v\n", move)
 
-				moveOK = validateInput(move,playerColor)
+				moveOK = validateInput(move[0:2],byte(playerColor[0]))
 			}
 
-			MoveDoneMessageString = strings.Join([]string{"DOMOVE ", move}, "")
+			fmt.Printf("move = %v\n", move)
+			MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
+			fmt.Printf("sending... %v", MoveDoneMessageString)
 			serverConnection.Write([]byte(MoveDoneMessageString))
 
 			turnCount++
 
 		} else {
+			printBoard()
+			fmt.Print("Waiting for opponent to move...\n")
 			playerMoveRequest := make([]byte, 120)
+			
 			_, err := serverConnection.Read(playerMoveRequest)
-			fullMoveString := string(playerMove[:120])
-			moveString := fullMoveString[9:10]
+			checkForError(err)
+			
+			fullMoveString := string(playerMoveRequest[:120])
+			moveString := fullMoveString[7:9]
+			fmt.Printf("movestring = '%v' ", moveString)
 
-			if playerColor == 'W' {
+			if playerColor == "W" {
 				_ = validateInput(moveString, 'B')
-			} else if playerColor == 'B' {
+			} else if playerColor == "B" {
 				_ = validateInput(moveString, 'W')
 			}
 
@@ -94,30 +214,79 @@ func playGame(playerColor byte, serverConnection net.Conn) {
 
 
 }
+func checkGameOver() bool{
+	blackCount := 0
+	whiteCount := 0
+	for i := range board {
+		for j := range board[i] {
+			if board[i][j] == 'W' {
+				whiteCount++
+			} else if board[i][j] == 'B' {
+				blackCount++
+			} else {
+				return false
+			}
+		}
+	}
+	fmt.Printf("Game over! ")
+	if whiteCount > blackCount {
+		fmt.Printf("White wins! ")
+	} else { 
+		fmt.Printf("Black wins! ")
+	}
+	fmt.Printf("Final score: b:%d w:%d", whiteCount, blackCount)
+	return true
 
+}
 func mainMenu() {
 	inputReader := bufio.NewReader(os.Stdin)
 	fmt.Print("Press enter to continue... ")
-	_, _ := inputReader.ReadString('\n')
+	_, _ = inputReader.ReadString('\n')
 	
-	while true {
-		fmt.Print("\n\nWelcome! Press 1 to list games or 2 to join a game! 3 to quit")
+	for true {
+		fmt.Print("\nWelcome! Press 1 to list games, 2 to join a game, 3 to host a game! 4 to quit")
 		text, _ := inputReader.ReadString('\n')
-		if text == 1 {
-			listGames()
-		} else if text ==2 {
-			hostGame()
-		} else if text == 3 {
-			exit(0)
+		text = strings.TrimSpace(text)
+
+		textInt, err := strconv.Atoi(text)
+		checkForError(err)
+		if err == nil {
+
+			if textInt == 1 {
+				listGames()
+			} else if textInt ==2 {
+				name := getName()
+				gameNumber := getGameNumber()
+				joinGame(gameNumber, name)
+			} else if textInt == 3 {
+				name := getName()
+				color := getColor()
+				hostGame(color, name)
+			}else if textInt == 4 {
+				os.Exit(0)
+			}
 		}
 	}
 }
+
 
 
 func checkForError(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func startBoard() {
+	for i := range board {
+		for j := range board[i] {
+			board[i][j] = 0
+		}
+	}
+	board[4][4] = 'B'
+	board[4][5] = 'W'
+	board[5][4] = 'B'
+	board[5][5] = 'W'
 }
 
 func printBoard() {
@@ -135,13 +304,19 @@ func printBoard() {
 
 func validateInput(moveInput string, playerColor byte) bool{
 	
+	fmt.Printf("moveinput[0] = %v, moveInput[1] = %v", moveInput[0], moveInput[1])
+	fmt.Printf(" len = %v ",len(moveInput))
 	if len(moveInput)!=2 {
+		fmt.Printf("fail1")
 		return false
 	} else if int(moveInput[0])>=75 || int(moveInput[0])<65 {
+		fmt.Printf("fail2")
 		return false
 	} else if (int(moveInput[1])-48) < 0 || (int(moveInput[1])-48) > 9 {
+		fmt.Printf("fail3")
 		return false
 	} 
+	fmt.Printf("made it here..")
 
 	changeCount := 0
 	for i:=1; i<=8; i++ {
