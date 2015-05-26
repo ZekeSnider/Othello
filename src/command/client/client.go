@@ -12,12 +12,17 @@ import (
     "strconv"
 )
 
+type Coordinate struct {
+  PosX, PosY int
+}
+
+
 type HostGame struct {
 	Name string
 	Color byte
 }
 
-type BoardLayout [10][10]byte
+type BoardLayout [10][10]string
 var board BoardLayout = BoardLayout{}
 
 func main() {
@@ -27,35 +32,42 @@ func main() {
 
 }
 
+//lists the open games being hosted by the server
 func listGames() {
+	//start connection with the server
 	conn, err := net.Dial("tcp", "localhost:8080")
 
+	//check for an error
 	checkForError(err)
-
 	defer conn.Close()
 
+	//send LISTGAME command to the server
 	conn.Write([]byte("LISTGAME"))
 
+	//get a response
 	response := make([]byte, 120)
 	_, err = conn.Read(response)
-
 	responseString := string(response[:120])
 
+	//Print the game list
 	if strings.HasPrefix(responseString, "GAMELIST") {
+		//get number of games
 		numElements, err := strconv.Atoi(responseString[9:10])
 		checkForError(err)
 
+		//loop through each element, get the name and color
 		for i := 0; i<numElements; i++ {
 			fmt.Printf("%v. %v %v\n", i+1, responseString[11+i*28:36+i*28], responseString[37+i*28:38+i*28])
 		}
-		
-	}
-	
 
+	}
+
+	//close the connection
 	conn.Close()
 
 }
 
+//gets the user's name
 func getName() string {
 	inputReader := bufio.NewReader(os.Stdin)
 	for true {
@@ -70,6 +82,7 @@ func getName() string {
 	return "bob"
 }
 
+//gets the game number from the user
 func getGameNumber() int {
 	inputReader := bufio.NewReader(os.Stdin)
 	for true {
@@ -85,6 +98,7 @@ func getGameNumber() int {
 	return 1
 }
 
+//gets the user's color
 func getColor() byte {
 	inputReader := bufio.NewReader(os.Stdin)
 	for true {
@@ -101,26 +115,28 @@ func getColor() byte {
 	}
 	return byte('B')
 }
+
+//joins another player's game
 func joinGame(gameNumber int, name string) {
 
-	//check if gamenumber size is greater than 8
+	//start connection
 	serverConnection, err := net.Dial("tcp", "localhost:8080")
-
 	checkForError(err)
-
 	defer serverConnection.Close()
-	
+
+	//sending request
 	requestString := fmt.Sprintf("JOINGAME %25v %v", name, gameNumber)
 	fmt.Printf("Game number is.. %v ",requestString)
-
 	serverConnection.Write([]byte(requestString))
+
+	//get response
 	response := make([]byte, 120)
-
 	fmt.Printf("Joining... \n")
-
 	_, _ = serverConnection.Read(response)
 	responseString := string(response[:120])
 
+
+	//Join the game if the response was positive, otherwise quit
 	if strings.HasPrefix(responseString, "GAMEJOIN") {
 		playerColor := responseString[9:10]
 		playGame(playerColor, serverConnection)
@@ -130,13 +146,15 @@ func joinGame(gameNumber int, name string) {
 	}
 
 }
+
+//hosts a game 
 func hostGame(playerColor byte, name string) {
 	serverConnection, err := net.Dial("tcp", "localhost:8080")
 
 	checkForError(err)
 
 	defer serverConnection.Close()
-	
+
 	requestString := fmt.Sprintf("HOSTGAME %25v %v", name, string(playerColor))
 	fmt.Printf("your color is.. %v", playerColor)
 
@@ -164,10 +182,22 @@ func playGame(playerColor string, serverConnection net.Conn) {
 	startBoard()
 	turnCount := 1
 	endGame := false
+
+	var otherPlayer string
+
+	if playerColor == "W" {
+		otherPlayer = "B"
+	} else {
+		otherPlayer = "W"
+	}
+
 	for endGame != true {
 		if (playerColor == "B" && turnCount % 2 == 1) || (playerColor == "W" && turnCount % 2 == 0) {
 			var move string
+			var moveList []Coordinate
 			moveOK := false
+
+			//repeats until the move can flip more than 0 tiles
 			for moveOK != true {
 				printBoard()
 				inputReader := bufio.NewReader(os.Stdin)
@@ -175,33 +205,40 @@ func playGame(playerColor string, serverConnection net.Conn) {
 				move, _ = inputReader.ReadString('\n')
 				fmt.Printf("move = %v\n", move)
 
-				moveOK = validateInput(move[0:2],byte(playerColor[0]))
+				//gets list of tiles to flip for the move
+				moveList = validateInput(move[0:2],playerColor)
+
+				//determine whether its empty or not
+				moveOK = isMoveEmpty(moveList)
+
 			}
 
-			fmt.Printf("move = %v\n", move)
+			fmt.Printf("move = %v\n", move[0:2])
 			MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
 			fmt.Printf("sending... %v", MoveDoneMessageString)
 			serverConnection.Write([]byte(MoveDoneMessageString))
 
+			doMove(moveList, playerColor)
+
 			turnCount++
 
 		} else {
+			var moveList []Coordinate
+
 			printBoard()
 			fmt.Print("Waiting for opponent to move...\n")
 			playerMoveRequest := make([]byte, 120)
-			
+
 			_, err := serverConnection.Read(playerMoveRequest)
 			checkForError(err)
-			
+
 			fullMoveString := string(playerMoveRequest[:120])
-			moveString := fullMoveString[7:9]
+			moveString := fullMoveString[9:11]
+			fmt.Printf("full string: '%s'\n", playerMoveRequest)
 			fmt.Printf("movestring = '%v' ", moveString)
 
-			if playerColor == "W" {
-				_ = validateInput(moveString, 'B')
-			} else if playerColor == "B" {
-				_ = validateInput(moveString, 'W')
-			}
+			moveList = validateInput(moveString, otherPlayer)
+			doMove(moveList, otherPlayer)
 
 			turnCount++
 		}
@@ -211,17 +248,17 @@ func playGame(playerColor string, serverConnection net.Conn) {
 			break
 		}
 	}
-
-
 }
+
+//Checks if the game is over.
 func checkGameOver() bool{
 	blackCount := 0
 	whiteCount := 0
 	for i := range board {
 		for j := range board[i] {
-			if board[i][j] == 'W' {
+			if board[i][j] == "W" {
 				whiteCount++
-			} else if board[i][j] == 'B' {
+			} else if board[i][j] == "B" {
 				blackCount++
 			} else {
 				return false
@@ -231,18 +268,20 @@ func checkGameOver() bool{
 	fmt.Printf("Game over! ")
 	if whiteCount > blackCount {
 		fmt.Printf("White wins! ")
-	} else { 
+	} else {
 		fmt.Printf("Black wins! ")
 	}
 	fmt.Printf("Final score: b:%d w:%d", whiteCount, blackCount)
 	return true
 
 }
+
+
 func mainMenu() {
 	inputReader := bufio.NewReader(os.Stdin)
 	fmt.Print("Press enter to continue... ")
 	_, _ = inputReader.ReadString('\n')
-	
+
 	for true {
 		fmt.Print("\nWelcome! Press 1 to list games, 2 to join a game, 3 to host a game! 4 to quit")
 		text, _ := inputReader.ReadString('\n')
@@ -280,13 +319,13 @@ func checkForError(err error) {
 func startBoard() {
 	for i := range board {
 		for j := range board[i] {
-			board[i][j] = 0
+			board[i][j] = "0"
 		}
 	}
-	board[4][4] = 'B'
-	board[4][5] = 'W'
-	board[5][4] = 'B'
-	board[5][5] = 'W'
+	board[4][4] = "B"
+	board[4][5] = "W"
+	board[5][4] = "B"
+	board[5][5] = "W"
 }
 
 func printBoard() {
@@ -296,178 +335,188 @@ func printBoard() {
 	for i := range board {
  		fmt.Printf("%d |",i)
 		for j := range board[i] {
-			fmt.Printf("%c ", board[i][j])
+			fmt.Printf("%v ", board[j][i])
 		}
 		fmt.Print("\n")
 	}
 }
 
-func validateInput(moveInput string, playerColor byte) bool{
-	
-	fmt.Printf("moveinput[0] = %v, moveInput[1] = %v", moveInput[0], moveInput[1])
-	fmt.Printf(" len = %v ",len(moveInput))
-	if len(moveInput)!=2 {
-		fmt.Printf("fail1")
-		return false
-	} else if int(moveInput[0])>=75 || int(moveInput[0])<65 {
-		fmt.Printf("fail2")
-		return false
-	} else if (int(moveInput[1])-48) < 0 || (int(moveInput[1])-48) > 9 {
-		fmt.Printf("fail3")
-		return false
-	} 
-	fmt.Printf("made it here..")
+func validateInput(moveInput string, playerColor string) []Coordinate{
+	var flipList []Coordinate
+	var currentX int
+	var currentY int
 
-	changeCount := 0
-	for i:=1; i<=8; i++ {
-		changeCount += doMove( int(moveInput[1])-48, int(moveInput[0])-65, i, playerColor)
+	//creating list of different move shifts for each 8 directions
+	shiftList := []Coordinate {Coordinate{PosX: 0, PosY: 1},
+	 Coordinate{PosX: 1, PosY:1}, Coordinate{PosX: 1, PosY:0}, Coordinate{PosX: 1, PosY:-1},
+	 Coordinate{PosX: 0, PosY:-1},Coordinate{PosX: -1, PosY:-1},Coordinate{PosX: -1, PosY:0},
+	 Coordinate{PosX: -1, PosY: 1}}
+
+
+	//declaring other player's color
+	var otherColor string
+	if playerColor == "W" {
+		otherColor = "B"
+	} else if playerColor == "B"{
+		otherColor = "W"
+	} else {
+		fmt.Printf("error.. playerColor = %v", playerColor)
 	}
 
-	if changeCount == 0 {
+	//converting string input to ints
+	startCoords := convertInput(moveInput)
+	startX := startCoords.PosX
+	startY := startCoords.PosY
+
+	fmt.Printf("startX = %v, startY = %v", startX, startY)
+
+	//if the move is not on the board or the space is not empty, return an empty fliplist
+	if !isOnBoard(startX, startY) || board[startX][startY] != "0" {
+		//fmt.Printf("error 1 ")
+		return flipList
+	}
+	
+	//set the current position to the player's color temporarily
+	board[startX][startY] = playerColor
+
+
+	//looping once for each direction on shiftlist
+	for _, currentShift := range shiftList {
+		//setting current position, start position, shift amounts
+		currentX = startX
+		currentY = startY
+		shiftX := currentShift.PosX
+		shiftY := currentShift.PosY
+
+		//do first shift
+		currentX +=  shiftX
+		currentY +=  shiftY
+
+		//if it is on the board
+		if (isOnBoard(currentX, currentY)) {
+			//if it is the other player's color
+			if (board[currentX][currentY] == otherColor) {
+				//fmt.Printf("made it in sx = %v sy = %v\n", shiftX, shiftY)
+
+				//The tile next to the start position is another player's tile so we should
+				//shift again.
+				currentX +=  shiftX
+				currentY +=  shiftY
+
+				//if this piece is not ont the board, continue to the next shift
+				if !isOnBoard(currentX, currentY) {
+					//fmt.Printf("not on board %v %v\n", currentX, currentY)
+					continue
+				}
+
+				//repeat while the tile is still the other color
+				for board[currentX][currentY] == otherColor {
+					//shift
+					currentX +=  shiftX
+					currentY +=  shiftY
+
+					//stop if its off the board
+					if !isOnBoard(currentX, currentY) {
+						//fmt.Printf("not on board %v %v\n", currentX, currentY)
+						break
+					}
+
+				}
+
+				//stop if its off the board
+				if !isOnBoard(currentX, currentY) {
+					//fmt.Printf("not on board %v %v\n", currentX, currentY)
+					continue
+				}
+
+				//found a connecting tile to make a move, start going backwards
+				//and adding tiles to the move list
+				if (board[currentX][currentY] == playerColor) {
+					//fmt.Printf("backtracking.. %v %v\n", shiftX, shiftY)
+					//repeat until we reach the start
+					for true {
+						//go backwards one tile
+						currentX -= shiftX
+						currentY -= shiftY
+
+						//if this is the last tile, end.
+		 				if (currentX == startX && currentY == startY) {
+							break
+						}
+
+						//add the tile to the flip list
+						newCoordiante := Coordinate{PosX:currentX, PosY:currentY}
+		        		flipList = append(flipList, newCoordiante)
+					}
+				}
+			} else {
+				//fmt.Printf("other color [%v %v] %v!=%v\n", currentX, currentY,  board[currentX][currentY], otherColor)
+			}
+		} else {
+			//fmt.Printf("not on board %v %v\n", currentX, currentY)
+		}
+	}
+
+	//set the start position back to null
+	board[startX][startY] = "0"
+
+	//if the move is valid, add the start position to the list of tiles to flips
+	if len(flipList) > 0 {
+		newCoordiante := Coordinate{PosX:startX, PosY:startY}
+		flipList = append(flipList, newCoordiante)
+	}
+
+
+	fmt.Printf("FLIP LIST %v", flipList)
+
+	//return the list of tiles to flip
+	return flipList
+}
+
+//converts an input string to int tuple 
+func convertInput(moveInput string) Coordinate {
+	//if the length is not correct, return -1s
+	if len(moveInput)!=2 {
+
+		fmt.Printf("fail1")
+		var convertedMove Coordinate
+		convertedMove.PosX = -1
+		convertedMove.PosY = -1
+		return convertedMove
+
+	}
+
+	//otherwise, convert the move and return it
+	var convertedMove Coordinate
+	convertedMove.PosX = int(moveInput[0]-65)
+	convertedMove.PosY = int(moveInput[1]-48)
+
+	return convertedMove
+}
+
+//tells whether or now the move is on the board
+func isOnBoard(inputX int, inputY int) bool {
+	if (inputX >= 0 && inputX <=9 && inputY >= 0 && inputY <= 9) {
+		return true
+	} else {
+		return false
+	}
+}
+
+//determines whether the move list is empty or not, returns a bool
+func isMoveEmpty(moveList []Coordinate) bool {
+	if (len(moveList) == 0) {
 		return false
 	} else {
-
-		if board[int(moveInput[1])-48][int(moveInput[0])-65] != playerColor {
-			board[int(moveInput[1])-48][int(moveInput[0])-65] = playerColor
-			changeCount++
-		}
 		return true
 	}
 }
 
-func doMove(Starti int, Startj int, testType int, playerColor byte, ) int {
-	var Currenti int
-	var Currentj int
-	changeCount := 0
 
-	if testType == 1 {
-		Currenti = Starti + 1
-		Currentj = Startj
-	} else if testType == 2 {
-		Currenti = Starti - 1
-		Currentj = Startj
-	} else if testType == 3 {
-		Currenti = Starti
-		Currentj = Startj - 1
-	} else if testType == 4 {
-		Currenti = Starti
-		Currentj = Startj + 1
-	} else if testType == 5 {
-		Currenti = Starti - 1
-		Currentj = Startj - 1
-	} else if testType == 6 {
-		Currenti = Starti + 1
-		Currentj = Startj - 1
-	} else if testType == 7 {
-		Currenti = Starti + 1
-		Currentj = Startj + 1
-	} else if testType == 8 {
-		Currenti = Starti + 1
-		Currentj = Startj - 1
+//Flips list of moves in array of Coordinate structs passed in
+//Changes board values for each position to the player color specified
+func doMove(moveList []Coordinate, playerColor string) {
+	for _, i:= range moveList {
+		board[i.PosX][i.PosY] = playerColor
 	}
-
-	for Currenti <= 9 && Currenti >= 0 && Currentj <= 9 && Currentj >= 0 && board[Currenti][Currentj] != '0'{
-		fmt.Printf("%d %d\n", Currenti,Currentj)
-		if board[Currenti][Currentj] == playerColor {
-			if testType == 1 {
-				for i:= Starti; i<Currenti; i++ {
-					if board[i][Currentj] != playerColor && board[i][Currentj] != '0' {
-						board[i][Currentj] = playerColor
-						changeCount++
-					}
-				}
-			} else if testType == 2 {
-				for i:= Starti; i>Currenti; i-- {
-					if board[i][Currentj] != playerColor && board[i][Currentj] != '0' {
-						board[i][Currentj] = playerColor
-						changeCount++
-					}
-				}
-			} else if testType == 3 {
-				for j:= Startj; j>Currentj; j-- {
-					if board[Currentj][j] != playerColor && board[Currentj][j] != '0'{
-						board[Currentj][j] = playerColor
-						changeCount++
-					}
-				}
-			} else if testType == 4 {
-				for j:= Startj; j<Currentj; j++ {
-					if board[Currentj][j] != playerColor && board[Currentj][j] != '0'{
-						board[Currentj][j] = playerColor
-						changeCount++
-					}
-				}
-			} else if testType == 5 {
-				i := Starti
-				j := Startj
-				for i!= Currenti && j != Currentj && i >= 0 && i<=9 && j >= 0 && j<=9 {
-					if board[i][j] != playerColor && board[i][j] != '0'{
-						board[i][j] = playerColor
-						changeCount++
-					}
-					i--
-					j--
-				}
-			} else if testType == 6 {
-				i := Starti
-				j := Startj
-				for i!= Currenti && j != Currentj && i >= 0 && i<=9 && j >= 0 && j<=9 {
-					fmt.Printf("i: %d j: %d\n",i,j)
-					if board[i][j] != playerColor && board[i][j] != '0'{
-						board[i][j] = playerColor
-						changeCount++
-					}
-					i--
-					j++
-				}
-			} else if testType == 7 {
-				i := Starti
-				j := Startj
-				for i!= Currenti && j != Currentj && i >= 0 && i<=9 && j >= 0 && j<=9 {
-					if board[i][j] != playerColor && board[i][j] != '0'{
-						board[i][j] = playerColor
-						changeCount++
-					}
-					i++
-					j++
-				}
-			} else if testType == 8 {
-				i := Starti
-				j := Startj
-				for i!= Currenti && j != Currentj && i >= 0 && i<=9 && j >= 0 && j<=9 {
-					if board[i][j] != playerColor && board[i][j] != '0'{
-						board[i][j] = playerColor
-						changeCount++
-					}
-					i--
-					j++
-				}
-			}
-			return changeCount
-		}
-
-		if testType == 1 {
-			Currenti++
-		} else if testType == 2 {
-			Currenti--
-		} else if testType == 3 {
-			Currentj--
-		} else if testType == 4 {
-			Currentj++
-		} else if testType == 5 {
-			Currenti++
-			Currentj--
-		} else if testType == 6 {
-			Currenti--
-			Currentj++
-		} else if testType == 7 {
-			Currenti++
-			Currentj++
-		} else if testType == 8 {
-			Currenti--
-			Currentj++
-		}
-	}
-	return changeCount
 }
-

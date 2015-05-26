@@ -11,7 +11,7 @@ run:
 	go fmt src/TimeServer.go
 	GOPATH=$(GOPATH) go run src/command/client/client.go
 	GOPATH=$(GOPATH) go run src/command/server/server.go
- 
+
 install:
 	GOPATH=$(GOPATH) go install command/client
 	GOPATH=$(GOPATH) go install command/server

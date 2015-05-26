@@ -34,14 +34,14 @@ func main() {
 
 	for {
 		conn, err := listener.Accept()
-		
+
 		checkForError(err)
-		
+
 		go handleConnection(conn)
 
 	}
 
-	
+
 }
 
 func checkForError(err error) {
@@ -52,14 +52,14 @@ func checkForError(err error) {
 
 func handleConnection(conn net.Conn) {
 	request := make([]byte, 120)
-			
+
 	_, err := conn.Read(request)
 
 	requestString := string(request[:120])
 
-	fmt.Printf("%v\n", requestString) 
+	fmt.Printf("%v\n", requestString)
 
-	
+
 	if err != nil {
 		if err != io.EOF {
 			fmt.Printf("error!!")
@@ -77,7 +77,7 @@ func handleConnection(conn net.Conn) {
 	} else if strings.HasPrefix(requestString, "JOINGAME") {
 		name := requestString[9:34]
 		gameNumber := requestString[35:36]
-		
+
 		fmt.Printf(".. %v ",gameNumber)
 
 		gameNumberInt, err := strconv.Atoi(gameNumber)
@@ -87,7 +87,7 @@ func handleConnection(conn net.Conn) {
 	}
 
 
-    
+
 
 
 }
@@ -101,7 +101,7 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 		if turnCount % 2 == 1 {
 
 			moveRequest := make([]byte, 120)
-			
+
 			_, err := blackPlayer.Read(moveRequest)
 			checkForError(err)
 
@@ -122,11 +122,12 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 		} else {
 
 			moveRequest := make([]byte, 120)
-			
+
+
 			_, err := whitePlayer.Read(moveRequest)
 			checkForError(err)
 
-			Move := string(moveRequest[9:10])
+			Move := string(moveRequest[7:9])
 
 			MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
 			fmt.Printf(MoveDoneMessageString)
@@ -204,5 +205,5 @@ func listGames(conn net.Conn){
 	conn.Write([]byte(gameList))
 
 	conn.Close()
-	return 
+	return
 }
