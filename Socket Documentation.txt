@@ -5,12 +5,13 @@ HOSTGAME [Name 25 Chars] | [Color: 1 char]
 LISTGAME [Page 1 char]
 NUMGAMES 
 DOMOVE [2 chars]
-(XX = cannot move)
-(YY = END GAME)
+	(XX = cannot move)
+	(YY = END GAME)
 
 
 Responses:
 MOVEDONE [move 2 chars]
+	(ZZ = oponent disconnected.)
 
 OKOKOKOK
 DENIED!!

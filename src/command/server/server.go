@@ -8,6 +8,7 @@ import (
 	"net"
 	"fmt"
 	//"time"
+	"os"
 	"io"
 	"strings"
 	"container/list"
@@ -103,12 +104,20 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 			moveRequest := make([]byte, 120)
 
 			_, err := blackPlayer.Read(moveRequest)
-			checkForError(err)
+
+			//if the client disconnected, let the other player know, and stop this thread.
+			if (err == io.EOF) {
+				Move := "ZZ"
+				MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
+				whitePlayer.Write([]byte(MoveDoneMessageString))
+				whitePlayer.Close()
+				os.Exit(0)
+			}
 
 			Move := string(moveRequest[7:9])
 
 			MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
-			fmt.Printf(MoveDoneMessageString)
+			fmt.Printf("%v\n", MoveDoneMessageString)
 
 			whitePlayer.Write([]byte(MoveDoneMessageString))
 
@@ -125,12 +134,20 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 
 
 			_, err := whitePlayer.Read(moveRequest)
-			checkForError(err)
+
+			//if the client disconnected, let the other player know, and stop this thread.
+			if (err == io.EOF) {
+				Move := "ZZ"
+				MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
+				blackPlayer.Write([]byte(MoveDoneMessageString))
+				blackPlayer.Close()
+				os.Exit(0)
+			}
 
 			Move := string(moveRequest[7:9])
 
 			MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
-			fmt.Printf(MoveDoneMessageString)
+			fmt.Printf("%v\n",MoveDoneMessageString)
 
 			blackPlayer.Write([]byte(MoveDoneMessageString))
 
@@ -150,6 +167,7 @@ func joinGame(name string, gameNumber int, joiner net.Conn) {
 
 	fmt.Printf("game no = %v", gameNumber)
 
+	//searching the list for the specified game number
 	if position != gameNumber {
 		for ; position != gameNumber; current= current.Next() {
 			if current != nil {
@@ -161,7 +179,11 @@ func joinGame(name string, gameNumber int, joiner net.Conn) {
 	var currentGame HostGame
 	var joinResponse string
 	var hostResponse string
+
+	//getting the value from the host list and removing it from the list so other players
+	//won't try to join the same game. 
 	currentGame = current.Value.(HostGame)
+	hostList.Remove(current)
 
 
 

@@ -49,6 +49,7 @@ func listGames() {
 	_, err = conn.Read(response)
 	responseString := string(response[:120])
 
+	fmt.Printf("Game List: \n")
 	//Print the game list
 	if strings.HasPrefix(responseString, "GAMELIST") {
 		//get number of games
@@ -57,7 +58,7 @@ func listGames() {
 
 		//loop through each element, get the name and color
 		for i := 0; i<numElements; i++ {
-			fmt.Printf("%v. %v %v\n", i+1, responseString[11+i*28:36+i*28], responseString[37+i*28:38+i*28])
+			fmt.Printf("%v. %v %v\n", i+1, strings.TrimSpace(responseString[11+i*28:36+i*28]), responseString[37+i*28:38+i*28])
 		}
 
 	}
@@ -71,7 +72,7 @@ func listGames() {
 func getName() string {
 	inputReader := bufio.NewReader(os.Stdin)
 	for true {
-		fmt.Print("\n\nEnter your name: ")
+		fmt.Print("Enter your name: ")
 		text, _ := inputReader.ReadString('\n')
 		text = strings.TrimSpace(text)
 		if len(text) < 25 || len(text) != 0 {
@@ -86,7 +87,7 @@ func getName() string {
 func getGameNumber() int {
 	inputReader := bufio.NewReader(os.Stdin)
 	for true {
-		fmt.Print("\n\nWhat game would you like to join?: ")
+		fmt.Print("What game would you like to join?: ")
 		text, _ := inputReader.ReadString('\n')
 		text = strings.TrimSpace(text)
 		textInt, err := strconv.Atoi(text)
@@ -102,7 +103,7 @@ func getGameNumber() int {
 func getColor() byte {
 	inputReader := bufio.NewReader(os.Stdin)
 	for true {
-		fmt.Print("\n\nChoose your color (W for white, B for Black): ")
+		fmt.Print("Choose your color (W for white, B for Black): ")
 		text, _ := inputReader.ReadString('\n')
 		text = strings.TrimSpace(text)
 		if text == "W" {
@@ -126,7 +127,7 @@ func joinGame(gameNumber int, name string) {
 
 	//sending request
 	requestString := fmt.Sprintf("JOINGAME %25v %v", name, gameNumber)
-	fmt.Printf("Game number is.. %v ",requestString)
+	//fmt.Printf("Game number is.. %v ",requestString)
 	serverConnection.Write([]byte(requestString))
 
 	//get response
@@ -149,27 +150,36 @@ func joinGame(gameNumber int, name string) {
 
 //hosts a game 
 func hostGame(playerColor byte, name string) {
+	//starting connection with the server
 	serverConnection, err := net.Dial("tcp", "localhost:8080")
-
 	checkForError(err)
-
 	defer serverConnection.Close()
 
+	//sending a hostagme request
 	requestString := fmt.Sprintf("HOSTGAME %25v %v", name, string(playerColor))
-	fmt.Printf("your color is.. %v", playerColor)
-
+	//fmt.Printf("your color is.. %v", playerColor)
 	serverConnection.Write([]byte(requestString))
+
+	//waiting for a pair to be found
 	response := make([]byte, 120)
-
 	fmt.Printf("Waiting for pair...\n")
-
 	_, _ = serverConnection.Read(response)
 	responseString := string(response[:120])
-	fmt.Printf("Got a Response!!!! %v", responseString)
+	//fmt.Printf("Got a Response!!!! %v", responseString)
 
+	//making a sound when a response is received
+	fmt.Print("\x07")
+	fmt.Print("\x07")
+	fmt.Print("\x07")
+
+	//if the response is GAMEPAIR, start the game
 	if strings.HasPrefix(responseString, "GAMEPAIR") {
+		Name := responseString[9:34]
+		fmt.Printf("Game pair found! You are playing with %v.\n", strings.TrimSpace(Name))
 		playGame(string(playerColor), serverConnection)
-	} else if strings.HasPrefix(responseString, "HOSTFULL") {
+
+	//if there are no host slots available, print an error
+	} else if strings.HasPrefix(responseString, "HOSTFULL") { 
 		fmt.Printf("ERROR: No more host slots available!!")
 		os.Exit(0)
 	}
@@ -191,15 +201,20 @@ func playGame(playerColor string, serverConnection net.Conn) {
 		otherPlayer = "W"
 	}
 
+	//repeat until the game is over
 	for endGame != true {
+		//if it is your turn
 		if (playerColor == "B" && turnCount % 2 == 1) || (playerColor == "W" && turnCount % 2 == 0) {
 			var move string
+
+			//if a move is possible for you
 			if isMovePossible(playerColor) {
 				var moveList []Coordinate
 				moveOK := false
 
 				//repeats until the move can flip more than 0 tiles
 				for moveOK != true {
+					//prints the board, prompts user for their choice, checks the move
 					printBoard()
 					inputReader := bufio.NewReader(os.Stdin)
 					fmt.Print("Enter your move: ")
@@ -214,51 +229,66 @@ func playGame(playerColor string, serverConnection net.Conn) {
 
 				}
 
-				fmt.Printf("move = %v\n", move[0:2])
+				//sending the move to the server
+
+				//fmt.Printf("move = %v\n", move[0:2])
 				MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
-				fmt.Printf("sending... %v", MoveDoneMessageString)
+				//fmt.Printf("sending... %v", MoveDoneMessageString)
 				serverConnection.Write([]byte(MoveDoneMessageString))
 
+				//executing the move client side
 				doMove(moveList, playerColor)
 
+				//advancing the game
 				turnCount++
 
+				//checking if the game is over
 				if isGameOver() {
 					endGame = true
 					break
 				}
-			} else {
+			} else { //if no moves are possible, tell the server
+				fmt.Printf("No moves are possible for you! \n")
 				move = "XX"
 				MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
-				fmt.Printf("sending... %v", MoveDoneMessageString)
+				//fmt.Printf("sending... %v", MoveDoneMessageString)
 				serverConnection.Write([]byte(MoveDoneMessageString))
 				turnCount++
 			}
 
-		} else {
+		} else { //if it is not your turn
 			var moveList []Coordinate
 
+			//print the board, wait for oponent to move
 			printBoard()
 			fmt.Print("Waiting for opponent to move...\n")
-			playerMoveRequest := make([]byte, 120)
 
+			//get response from server
+			playerMoveRequest := make([]byte, 120)
 			_, err := serverConnection.Read(playerMoveRequest)
 			checkForError(err)
-
 			fullMoveString := string(playerMoveRequest[:120])
 			moveString := fullMoveString[9:11]
-			fmt.Printf("full string: '%s'\n", playerMoveRequest)
-			fmt.Printf("movestring = '%v' ", moveString)
 
-			if moveString != "XX" {
+			//fmt.Printf("full string: '%s'\n", playerMoveRequest)
+			//fmt.Printf("movestring = '%v' ", moveString)
+
+			//if the opnent can't move, print that and move on
+			if moveString == "XX" {
+				fmt.Printf("The opponent could not move.\n")
+			} else if moveString == "ZZ"{ 
+				fmt.Printf("Error! The oponent disconnected.\n")
+				serverConnection.Close()
+				mainMenu()
+				
+			} else { //otherwise, execute the oponent's move. 
 				moveList = validateInput(moveString, otherPlayer)
 				doMove(moveList, otherPlayer)
-			} else {
-				fmt.Printf("The opponent could not move.\n")
 			}
 
 			turnCount++
 
+			//if the game is over, let the server know and set a flag.
 			if isGameOver() {
 				move := "YY"
 				MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
@@ -333,7 +363,11 @@ func printBoard() {
 	for i := range board {
  		fmt.Printf("%d |",i)
 		for j := range board[i] {
-			fmt.Printf("%v ", board[j][i])
+			if board[j][i] != "0" {
+				fmt.Printf("%v ", board[j][i])
+			} else {
+				fmt.Printf("  ")
+			}
 		}
 		fmt.Print("\n")
 	}
@@ -549,6 +583,11 @@ func getGameResults() string {
 			}
 		}
 	}
+
+	//printing the board and outputting results
+	fmt.Printf("\n")
+	printBoard() 
+	fmt.Printf("\n")
 
 	if whiteScore > blackScore {
 		returnString := fmt.Sprintf("White won! the final score was %v - %v\n", whiteScore, blackScore)
