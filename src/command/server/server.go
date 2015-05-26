@@ -142,8 +142,6 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 			}
 		}
 	}
-
-
 }
 
 func joinGame(name string, gameNumber int, joiner net.Conn) {

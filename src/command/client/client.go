@@ -194,33 +194,46 @@ func playGame(playerColor string, serverConnection net.Conn) {
 	for endGame != true {
 		if (playerColor == "B" && turnCount % 2 == 1) || (playerColor == "W" && turnCount % 2 == 0) {
 			var move string
-			var moveList []Coordinate
-			moveOK := false
+			if isMovePossible(playerColor) {
+				var moveList []Coordinate
+				moveOK := false
 
-			//repeats until the move can flip more than 0 tiles
-			for moveOK != true {
-				printBoard()
-				inputReader := bufio.NewReader(os.Stdin)
-				fmt.Print("Enter your move: ")
-				move, _ = inputReader.ReadString('\n')
-				fmt.Printf("move = %v\n", move)
+				//repeats until the move can flip more than 0 tiles
+				for moveOK != true {
+					printBoard()
+					inputReader := bufio.NewReader(os.Stdin)
+					fmt.Print("Enter your move: ")
+					move, _ = inputReader.ReadString('\n')
+					fmt.Printf("move = %v\n", move)
 
-				//gets list of tiles to flip for the move
-				moveList = validateInput(move[0:2],playerColor)
+					//gets list of tiles to flip for the move
+					moveList = validateInput(move[0:2],playerColor)
 
-				//determine whether its empty or not
-				moveOK = isMoveEmpty(moveList)
+					//determine whether its empty or not
+					moveOK = !isMoveEmpty(moveList)
 
+				}
+
+				fmt.Printf("move = %v\n", move[0:2])
+				MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
+				fmt.Printf("sending... %v", MoveDoneMessageString)
+				serverConnection.Write([]byte(MoveDoneMessageString))
+
+				doMove(moveList, playerColor)
+
+				turnCount++
+
+				if isGameOver() {
+					endGame = true
+					break
+				}
+			} else {
+				move = "XX"
+				MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
+				fmt.Printf("sending... %v", MoveDoneMessageString)
+				serverConnection.Write([]byte(MoveDoneMessageString))
+				turnCount++
 			}
-
-			fmt.Printf("move = %v\n", move[0:2])
-			MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
-			fmt.Printf("sending... %v", MoveDoneMessageString)
-			serverConnection.Write([]byte(MoveDoneMessageString))
-
-			doMove(moveList, playerColor)
-
-			turnCount++
 
 		} else {
 			var moveList []Coordinate
@@ -237,44 +250,29 @@ func playGame(playerColor string, serverConnection net.Conn) {
 			fmt.Printf("full string: '%s'\n", playerMoveRequest)
 			fmt.Printf("movestring = '%v' ", moveString)
 
-			moveList = validateInput(moveString, otherPlayer)
-			doMove(moveList, otherPlayer)
+			if moveString != "XX" {
+				moveList = validateInput(moveString, otherPlayer)
+				doMove(moveList, otherPlayer)
+			} else {
+				fmt.Printf("The opponent could not move.\n")
+			}
 
 			turnCount++
-		}
 
-		if checkGameOver() {
-			endGame = true
-			break
-		}
-	}
-}
+			if isGameOver() {
+				move := "YY"
+				MoveDoneMessageString := fmt.Sprintf("DOMOVE %v", move[0:2])
+				fmt.Printf("sending... %v", MoveDoneMessageString)
+				serverConnection.Write([]byte(MoveDoneMessageString))
 
-//Checks if the game is over.
-func checkGameOver() bool{
-	blackCount := 0
-	whiteCount := 0
-	for i := range board {
-		for j := range board[i] {
-			if board[i][j] == "W" {
-				whiteCount++
-			} else if board[i][j] == "B" {
-				blackCount++
-			} else {
-				return false
+				endGame = true
+				break
 			}
-		}
+		}	
 	}
-	fmt.Printf("Game over! ")
-	if whiteCount > blackCount {
-		fmt.Printf("White wins! ")
-	} else {
-		fmt.Printf("Black wins! ")
-	}
-	fmt.Printf("Final score: b:%d w:%d", whiteCount, blackCount)
-	return true
-
+	fmt.Printf(getGameResults())
 }
+
 
 
 func mainMenu() {
@@ -368,7 +366,7 @@ func validateInput(moveInput string, playerColor string) []Coordinate{
 	startX := startCoords.PosX
 	startY := startCoords.PosY
 
-	fmt.Printf("startX = %v, startY = %v", startX, startY)
+	//fmt.Printf("startX = %v, startY = %v", startX, startY)
 
 	//if the move is not on the board or the space is not empty, return an empty fliplist
 	if !isOnBoard(startX, startY) || board[startX][startY] != "0" {
@@ -467,7 +465,7 @@ func validateInput(moveInput string, playerColor string) []Coordinate{
 	}
 
 
-	fmt.Printf("FLIP LIST %v", flipList)
+	//fmt.Printf("FLIP LIST %v", flipList)
 
 	//return the list of tiles to flip
 	return flipList
@@ -494,6 +492,73 @@ func convertInput(moveInput string) Coordinate {
 	return convertedMove
 }
 
+//determines whether or not it is possible for the player to make a move
+func isMovePossible(playerColor string) bool {
+	//loop over board
+	for i := range board {
+		for j := range board[i] {
+			var inputString string
+			inputString = fmt.Sprintf("%s%s",string(i+65),string(j+48))
+			//fmt.Printf("%v\n",inputString)
+
+			//check yoyal flips possible for the space
+			moveList := validateInput(inputString, playerColor)
+
+			//if the flip list is not empty, return true 
+			//because there are flips possible
+			if !isMoveEmpty(moveList) {
+				return true
+			}
+		}
+	}
+
+	//return false if no flips were found
+	return false;
+
+}
+
+//determines whether or not the game is over
+func isGameOver() bool {
+	//loop over board
+	for i := range board {
+		for j := range board[i] {
+			//if a space is empty return false
+			if board[i][j] == "0" {
+				return false
+			}
+		}
+	}
+
+	//if no spaces are empty return true
+	return true
+}
+
+//gets a summary of the results of the game in a string
+func getGameResults() string {
+	whiteScore := 0
+	blackScore := 0
+
+	//tallying the score by looping through all tiles
+	for i := range board {
+		for j := range board[i] {
+			//incrementing the correct count
+			if board[i][j] == "W" {
+				whiteScore++
+			} else if board[i][j] == "B" {
+				blackScore++
+			}
+		}
+	}
+
+	if whiteScore > blackScore {
+		returnString := fmt.Sprintf("White won! the final score was %v - %v\n", whiteScore, blackScore)
+		return returnString
+	} else {
+		returnString := fmt.Sprintf("Black won! the final score was %v - %v\n", blackScore, whiteScore)
+		return returnString
+	}
+}
+
 //tells whether or now the move is on the board
 func isOnBoard(inputX int, inputY int) bool {
 	if (inputX >= 0 && inputX <=9 && inputY >= 0 && inputY <= 9) {
@@ -506,9 +571,9 @@ func isOnBoard(inputX int, inputY int) bool {
 //determines whether the move list is empty or not, returns a bool
 func isMoveEmpty(moveList []Coordinate) bool {
 	if (len(moveList) == 0) {
-		return false
-	} else {
 		return true
+	} else {
+		return false
 	}
 }
 
