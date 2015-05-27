@@ -8,7 +8,6 @@ import (
 	"net"
 	"fmt"
 	//"time"
-	"os"
 	"io"
 	"strings"
 	"container/list"
@@ -33,7 +32,7 @@ func main() {
 
 	checkForError(err)
 
-	for {
+	for true {
 		conn, err := listener.Accept()
 
 		checkForError(err)
@@ -79,7 +78,7 @@ func handleConnection(conn net.Conn) {
 		name := requestString[9:34]
 		gameNumber := requestString[35:36]
 
-		fmt.Printf(".. %v ",gameNumber)
+		fmt.Printf("JOINGAME %v \n",gameNumber)
 
 		gameNumberInt, err := strconv.Atoi(gameNumber)
 		checkForError(err)
@@ -111,7 +110,9 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 				MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
 				whitePlayer.Write([]byte(MoveDoneMessageString))
 				whitePlayer.Close()
-				os.Exit(0)
+				
+				endGame = true
+				break
 			}
 
 			Move := string(moveRequest[7:9])
@@ -141,7 +142,9 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 				MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
 				blackPlayer.Write([]byte(MoveDoneMessageString))
 				blackPlayer.Close()
-				os.Exit(0)
+
+				endGame = true
+				break
 			}
 
 			Move := string(moveRequest[7:9])
@@ -165,7 +168,7 @@ func joinGame(name string, gameNumber int, joiner net.Conn) {
 	position := 1
 	current := hostList.Front()
 
-	fmt.Printf("game no = %v", gameNumber)
+	//fmt.Printf("game no = %v", gameNumber)
 
 	//searching the list for the specified game number
 	if position != gameNumber {

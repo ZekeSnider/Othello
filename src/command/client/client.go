@@ -311,7 +311,7 @@ func mainMenu() {
 	_, _ = inputReader.ReadString('\n')
 
 	for true {
-		fmt.Print("\nWelcome! Press 1 to list games, 2 to join a game, 3 to host a game! 4 to quit")
+		fmt.Print("\nWelcome! Press 1 to list games, 2 to join a game, 3 to host a game! 4 to quit: ")
 		text, _ := inputReader.ReadString('\n')
 		text = strings.TrimSpace(text)
 
