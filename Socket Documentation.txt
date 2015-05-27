@@ -12,14 +12,27 @@ DOMOVE [2 chars]
 Responses:
 MOVEDONE [move 2 chars]
 	(ZZ = oponent disconnected.)
-
+GAMEPAIR [player name 25 chars]
+GAMEJOIN [color 2 chars]
 OKOKOKOK
 DENIED!!
-
-
 GAMELIST [Name 25 chars] | [Color 1 char] | [Name 25 chars] | [Color 1 char] | [Name 25 chars] | [Color 1 char] | [Name 25 chars] | [Color 1 char]
 8 + (25 + 1) * 4 = 112
 
+
+
+
+The initial requests to the serve are:
+
+LISTGAME
+Lists the games, and returns the list to the client. Then the connection is terminated
+
+HOSTGAME
+Hosts a game, then waits for a response when another player joins the room. Once another player joins, GAMEJOIN response is sent.
+
+
+JOINGAME
+Joins another player's room. The server responds with GAMEJOIN reponse. 
 
 
 

@@ -24,19 +24,16 @@ var hostList = list.New()
 
 func main() {
 
+	//establish a socket
 	TCPAddress, err := net.ResolveTCPAddr("tcp4", ":8080")
-
 	checkForError(err)
-
 	listener, err := net.ListenTCP("tcp", TCPAddress)
-
 	checkForError(err)
 
+	//repeat checking for a new connection
 	for true {
 		conn, err := listener.Accept()
-
 		checkForError(err)
-
 		go handleConnection(conn)
 
 	}
@@ -50,11 +47,12 @@ func checkForError(err error) {
 	}
 }
 
+//handle a connection
 func handleConnection(conn net.Conn) {
+
+	//get a request
 	request := make([]byte, 120)
-
 	_, err := conn.Read(request)
-
 	requestString := string(request[:120])
 
 	fmt.Printf("%v\n", requestString)
@@ -68,6 +66,7 @@ func handleConnection(conn net.Conn) {
 		//break
 	}
 
+	//check which type of request it is, and handle accordingly
 	if strings.HasPrefix(requestString, "LISTGAME") {
 		listGames(conn)
 	} else if strings.HasPrefix(requestString, "HOSTGAME") {
@@ -82,26 +81,24 @@ func handleConnection(conn net.Conn) {
 
 		gameNumberInt, err := strconv.Atoi(gameNumber)
 		checkForError(err)
-
 		joinGame(name, gameNumberInt, conn)
 	}
-
-
-
-
-
 }
 
+//handles a game between two players
 func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 	defer blackPlayer.Close()
 	defer whitePlayer.Close()
 	turnCount := 1
 	endGame := false
+
+	//repeat until the game is over. 
 	for !endGame {
+		//if it's the black player's turn
 		if turnCount % 2 == 1 {
 
+			//read the request
 			moveRequest := make([]byte, 120)
-
 			_, err := blackPlayer.Read(moveRequest)
 
 			//if the client disconnected, let the other player know, and stop this thread.
@@ -115,28 +112,29 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 				break
 			}
 
+			//parse the move, create request to send to the other player
 			Move := string(moveRequest[7:9])
-
 			MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
 			fmt.Printf("%v\n", MoveDoneMessageString)
 
+			//write the move done by the blackplayer to the whiteplayer
 			whitePlayer.Write([]byte(MoveDoneMessageString))
 
+			//advance the turn count
 			turnCount++
 
+			//if the move is YY, the game is over. 
 			if Move=="YY" {
 				endGame = true
 				break
 			}
 
+		//same functionality for the white player's turn. roles are reversed
 		} else {
 
 			moveRequest := make([]byte, 120)
-
-
 			_, err := whitePlayer.Read(moveRequest)
 
-			//if the client disconnected, let the other player know, and stop this thread.
 			if (err == io.EOF) {
 				Move := "ZZ"
 				MoveDoneMessageString := fmt.Sprintf("MOVEDONE %v", Move)
@@ -164,7 +162,10 @@ func handleGame(blackPlayer net.Conn, whitePlayer net.Conn) {
 	}
 }
 
+//joins a player to another player's game that is being joined
 func joinGame(name string, gameNumber int, joiner net.Conn) {
+
+	//for going through host list
 	position := 1
 	current := hostList.Front()
 
@@ -189,44 +190,46 @@ func joinGame(name string, gameNumber int, joiner net.Conn) {
 	hostList.Remove(current)
 
 
-
+	//send a response back to the joiner with their color
 	if currentGame.Color == "B" {
 		joinResponse = fmt.Sprintf("GAMEJOIN W")
 	} else if currentGame.Color == "W" {
 		joinResponse = fmt.Sprintf("GAMEJOIN B")
 	}
-
-	hostResponse = fmt.Sprintf("GAMEPAIR %25v", name)
-
 	joiner.Write([]byte(joinResponse))
+
+	//send a response to the host with the joiner's name 
+	hostResponse = fmt.Sprintf("GAMEPAIR %25v", name)
 	currentGame.Socket.Write([]byte(hostResponse))
 
+	//call handlegame with correct order on sockets for B/W colors
 	if currentGame.Color == "B" {
 		handleGame(currentGame.Socket, joiner)
 	} else {
 		handleGame(joiner, currentGame.Socket)
 	}
-
-
-
-
 }
 
+//add the host to the list of hosts
 func hostGame(name string, color string, conn net.Conn){
 	hostList.PushBack(HostGame{name, color, conn})
 
 }
+
+//lists the games and send it back to the client
 func listGames(conn net.Conn){
 	gameList := fmt.Sprintf("GAMELIST %v ", hostList.Len())
 
+	//add all hosts's names and colors to the response with padding
 	for e := hostList.Front(); e != nil; e = e.Next() {
 		var currentGame HostGame
 		currentGame = e.Value.(HostGame)
 		gameList = fmt.Sprintf("%v%v %v ",gameList, currentGame.Name, currentGame.Color)
 	}
 
+	//writ the response, then close the connection
 	conn.Write([]byte(gameList))
-
 	conn.Close()
+
 	return
 }

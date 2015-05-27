@@ -12,24 +12,24 @@ import (
     "strconv"
 )
 
+//stores a move
 type Coordinate struct {
   PosX, PosY int
 }
 
-
+//stores a game
 type HostGame struct {
 	Name string
 	Color byte
 }
 
+//stores the board layout
 type BoardLayout [10][10]string
 var board BoardLayout = BoardLayout{}
 
+
 func main() {
-
 	mainMenu()
-
-
 }
 
 //lists the open games being hosted by the server
@@ -304,19 +304,24 @@ func playGame(playerColor string, serverConnection net.Conn) {
 }
 
 
-
+//displays the main menu
 func mainMenu() {
+	//Press enter to continue
 	inputReader := bufio.NewReader(os.Stdin)
 	fmt.Print("Press enter to continue... ")
 	_, _ = inputReader.ReadString('\n')
 
+	//repeats until a valid input is given
 	for true {
+		//prompts the user to choose an option
 		fmt.Print("\nWelcome! Press 1 to list games, 2 to join a game, 3 to host a game! 4 to quit: ")
 		text, _ := inputReader.ReadString('\n')
 		text = strings.TrimSpace(text)
 
 		textInt, err := strconv.Atoi(text)
 		checkForError(err)
+
+		//parses the response and calls the appropriate function
 		if err == nil {
 
 			if textInt == 1 {
