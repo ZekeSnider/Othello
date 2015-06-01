@@ -12,6 +12,7 @@ import (
     "strconv"
 )
 
+
 //stores a move
 type Coordinate struct {
   PosX, PosY int
@@ -27,6 +28,8 @@ type HostGame struct {
 type BoardLayout [10][10]string
 var board BoardLayout = BoardLayout{}
 
+var IPAddress string = "localhost:8080"
+
 
 func main() {
 	mainMenu()
@@ -35,7 +38,7 @@ func main() {
 //lists the open games being hosted by the server
 func listGames() {
 	//start connection with the server
-	conn, err := net.Dial("tcp", "localhost:8080")
+	conn, err := net.Dial("tcp", IPAddress)
 
 	//check for an error
 	checkForError(err)
@@ -121,7 +124,7 @@ func getColor() byte {
 func joinGame(gameNumber int, name string) {
 
 	//start connection
-	serverConnection, err := net.Dial("tcp", "localhost:8080")
+	serverConnection, err := net.Dial("tcp", IPAddress)
 	checkForError(err)
 	defer serverConnection.Close()
 
@@ -151,7 +154,7 @@ func joinGame(gameNumber int, name string) {
 //hosts a game 
 func hostGame(playerColor byte, name string) {
 	//starting connection with the server
-	serverConnection, err := net.Dial("tcp", "localhost:8080")
+	serverConnection, err := net.Dial("tcp", IPAddress)
 	checkForError(err)
 	defer serverConnection.Close()
 
