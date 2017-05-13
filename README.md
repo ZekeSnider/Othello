@@ -1,4 +1,4 @@
-#CSS 432 Final Project: Othello
+# CSS 432 Final Project: Othello
 Zeke Snider  
 5/31/15
 
