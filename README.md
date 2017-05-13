@@ -33,15 +33,15 @@ Responses:
 
 The initial requests to the serve are:
 
-###LISTGAME
+### LISTGAME
 Lists the games, and returns the list to the client. Then the connection is terminated. The server's response is formatted in the GAMELIST format detailed above. The name is padded to be 25 chars, and unpadded when received on the client side.
 
-###HOSTGAME
+### HOSTGAME
 Hosts a game, then waits for a response when another player joins the room. Once another player joins, GAMEJOIN response is sent. The client and server then enter the gameloop.
 
-###JOINGAME
+### JOINGAME
 Joins another player's room. The server responds with GAMEJOIN reponse. The client and server then enter the gameloop.
 
-###Game Loop
+### Game Loop
 The board is displayed to both players, and the player color Black is prompted to move first. Once he/she moves, DOMOVE is sent to the server, and the server forwards on the request as MOVEDONE to the other player. Then the other player is prompted for their move and so on. The validity of the move is checked on the client's side before making the move and sending it. If a player has no moves possible, it sends "XX" as the move which is a code for skip. The next player then moves with no changes to the board. If "YY" is sent, the server disconnects from both clients as the game is over. If a client disconnects midmatch, an error messages is displayed to the other player and the server terminates the connection. After a game is over, the score is displayed to both players with a winner by the client side, then the user is redirected to the main menu. 
 
